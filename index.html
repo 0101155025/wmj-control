@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101c29">
+  <meta name="description" content="芮浩然的 WMJ 轮腿机器人控制研究。探索共差模 LPV-MPC、双轮功率约束、闭环轨迹和 STM32H723 板端验证。">
+  <meta name="author" content="芮浩然">
+  <title>WMJ 轮腿机器人控制 · 芮浩然</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=4">
+  <script defer src="data.js?v=4"></script>
+  <script defer src="app.js?v=4"></script>
+</head>
+<body>
+  <a class="skip" href="#main">跳到正文</a>
+  <header class="top">
+    <div class="wrap nav">
+      <a class="brand" href="#main"><img src="mark.svg" alt="" width="35" height="35"><span>WMJ<span class="brand-sub">轮腿机器人控制</span></span></a>
+      <nav aria-label="网页导航"><a href="#realtime">交互回放</a><a href="#method">控制方法</a><a href="#evidence">验证结果</a></nav>
+      <span class="author">芮浩然</span>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
+        <div class="hero-text">
+          <p class="eyebrow"><span class="dot"></span> CONTROL RESEARCH <span class="bar"></span> WMJ</p>
+          <h1 id="hero-title">WMJ<br>轮腿机器人控制</h1>
+          <p class="hero-lead">H723 台架实测，左右腿长变化时，完整控制链在 <strong>2 ms</strong> 内完成。</p>
+          <p class="hero-body">十状态物理模型、完整共差模 LPV-MPC 与双轮功率约束，在同一控制周期内协调平衡和运动。</p>
+          <div class="actions"><a class="primary" href="#realtime">查看闭环曲线 <span aria-hidden="true">↘</span></a><a class="secondary" href="#evidence">板端验证 <span aria-hidden="true">→</span></a></div>
+        </div>
+        <figure class="hero-figure">
+          <img src="wmj-robomaster.jpg" alt="WMJ 轮腿机器人在 RoboMaster 赛场，背景是 WMJ 队旗" width="1280" height="700" fetchpriority="high">
+          <figcaption><span>FIG. 01</span> WMJ 轮腿机器人 <span class="figure-note">RoboMaster 赛场</span></figcaption>
+        </figure>
+      </div>
+    </section>
+    <section class="summary" aria-label="关键指标">
+      <div class="wrap metrics">
+        <div><span class="metric-num"><span id="hero-max">1.593</span><small> ms</small></span><span class="metric-title">变化腿长下整链最大耗时</span><span class="metric-note">STM32H723 · 480 MHz</span></div>
+        <div><span class="metric-num"><span id="hero-ticks">7,001</span><small> 拍</small></span><span class="metric-title">完整 MPC 控制链测试</span><span class="metric-note">固定与变化腿长 · 零超时</span></div>
+        <div><span class="metric-num">45<span class="middot">·</span>55<span class="middot">·</span>60<small> W</small></span><span class="metric-title">双轮功率预算</span><span class="metric-note">三档工况 · 同参数闭环对照</span></div>
+      </div>
+    </section>
+
+    <section id="realtime" class="section wrap">
+      <div class="section-head">
+        <div><p class="eyebrow accent">01 / RESPONSE VIEWER</p><h2>在曲线上看控制效果</h2></div>
+        <p>10 秒记录覆盖加速、外扰、执行器削矩和恢复。四种方案使用同一组 Q/R。</p>
+      </div>
+      <div class="scope">
+        <div class="scope-header">
+          <div><span class="scope-kicker"><span class="dot"></span> WMJ 非线性闭环 · 数据回放</span><h3 id="scope-title">不等腿长 · 速度指令响应</h3></div>
+          <span class="scope-tag">采样 2 ms</span>
+        </div>
+        <div class="scope-body">
+          <div class="scope-controls">
+            <div class="control"><label for="scenario">展示工况</label><select id="scenario"><option value="step">快速响应</option><option value="comparison">求解器对照</option></select></div>
+            <div class="control"><label for="budget">双轮预算</label><select id="budget"><option value="45">45 W</option><option value="55">55 W</option><option value="60">60 W</option></select></div>
+            <div class="control"><label id="solver-label" for="solver">联合功率 FGM</label><select id="solver"><option value="FGM_joint">FGM · 联合功率</option></select></div>
+            <div class="signals" role="group" aria-label="绘图量">
+              <button type="button" data-signal="speed" aria-pressed="true">速度</button>
+              <button type="button" data-signal="pitch" aria-pressed="false">俯仰</button>
+              <button type="button" data-signal="torque" aria-pressed="false">轮矩</button>
+              <button type="button" data-signal="power" aria-pressed="false">功率</button>
+              <button type="button" data-signal="delta" aria-pressed="false">跟踪误差</button>
+            </div>
+          </div>
+          <div class="selection" id="selection" role="status"></div>
+          <div id="chart-legend" class="chart-legend" aria-label="曲线图例"></div>
+          <div class="plot">
+            <svg id="chart" viewBox="0 0 760 300" role="img" aria-labelledby="chart-title"><title id="chart-title">仿真数据响应曲线</title></svg>
+          </div>
+          <p class="scope-note" id="scope-note"></p>
+          <div id="difference-panel" class="difference-panel" hidden>
+            <h4 id="difference-title"></h4>
+            <svg id="diff-chart" role="img" aria-label="同预算方案间速度差曲线"></svg>
+            <p id="difference-note" class="scope-note"></p>
+          </div>
+          <div class="playback">
+            <button id="play" class="play" type="button">▶ 播放</button>
+            <label class="sr-only" for="position">仿真时间</label><input id="position" type="range" min="0" max="4999" value="4999">
+            <output id="clock" for="position">10.00 s</output>
+          </div>
+          <div class="telemetry">
+            <div><span>前进速度</span><strong id="read-speed">—</strong><small> m/s</small></div>
+            <div><span>机体俯仰</span><strong id="read-pitch">—</strong><small> °</small></div>
+            <div><span>双轮功率</span><strong id="read-power">—</strong><small> W</small></div>
+            <div><span>功率触边</span><strong id="read-active">—</strong><small> 拍 / 全程</small></div>
+          </div>
+        </div>
+      </div>
+      <p class="caption" id="scenario-caption">WMJ 非线性模型 · 外部 LESO · 快速整定仿真</p>
+      <noscript><p>开启 JavaScript 可使用交互回放。下方仍可查看控制方法与板端结果。</p></noscript>
+    </section>
+
+    <section id="method" class="section method-band">
+      <div class="wrap">
+        <div class="section-head">
+          <div><p class="eyebrow accent">02 / CONTROL ARCHITECTURE</p><h2>把计算留给每拍真正变化的量</h2></div>
+          <p>模型随左右腿长更新。代价保留共差耦合，力矩约束在物理坐标中处理。</p>
+        </div>
+        <div class="flow">
+          <article><span class="step">01</span><h3>十状态物理模型</h3><p>用 17 元受力方程求解轮腿动力学，按左、右腿长分别插值得到当前预测模型。</p><code>(L<sub>L</sub>, L<sub>R</sub>) → A, B, c</code></article>
+          <article><span class="step">02</span><h3>完整共差模预测</h3><p>用半和、半差描述两侧同步与相对运动。保留全部交叉项，离线计算终端代价、凝聚系数和谱界。</p><code>N<sub>p</sub> = 8 · N<sub>c</sub> = 5</code></article>
+          <article><span class="step">03</span><h3>投影到物理力矩</h3><p>在线执行 100 次 FGM，将候选还原为四路物理力矩，联合检查轮矩与双轮功率。每拍只执行序列的第一步。</p><code>u = [T<sub>wL</sub>, T<sub>wR</sub>, T<sub>pL</sub>, T<sub>pR</sub>]</code></article>
+        </div>
+        <details class="method-detail">
+          <summary>展开功率模型与实时实现</summary>
+          <div class="detail-grid">
+            <div><h3>双轮共享功率</h3><p>用当前轮速估计两轮功率。逐轮截零后相加，防止制动侧负功率抵扣驱动侧预算。固定本拍轮速后，联合可行域可写成偏心圆盘与收紧力矩矩形的交集。</p><code>P = Σ max(1.224T² + ωT + 0.007ω² + 2, 0)</code></div>
+            <div><h3>离线表与在线反馈</h3><p>用 43 × 43 的系数网格和 rank20 表示重建完整凝聚矩阵。状态、参考、轮速和限值每拍更新，腿长相同的连续拍可复用模型系数。</p></div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section id="evidence" class="section wrap">
+      <div class="section-head">
+        <div><p class="eyebrow accent">03 / VALIDATION</p><h2>每个数字都对应一次验证</h2></div>
+        <p>FGM 联合功率，H723 整链最大 1.593 ms。</p>
+      </div>
+      <div class="evidence-grid">
+        <article class="evidence-card">
+          <div class="card-meta"><span>板端实测</span><span>H723 / DWT</span></div>
+          <h3>FGM 联合功率 · 整链最大 <span id="board-max">1.593</span> ms</h3>
+          <p>H723 板端实测 · 从反馈快照到五帧 FDCAN 入队</p>
+          <div class="budget-scale"><span>0 ms</span><span>2 ms 周期</span></div>
+          <div class="bench-row"><div><span>固定腿长 MPC</span><strong id="cached-ms">1.012 ms</strong></div><span class="track"><span id="cached-bar" style="width:50.6%"></span></span><small>3,501 拍 · 零超时</small></div>
+          <div class="bench-row"><div><span>变化不等腿长 MPC</span><strong id="changing-ms">1.593 ms</strong></div><span class="track"><span id="changing-bar" style="width:79.65%"></span></span><small>3,500 拍 · 零超时</small></div>
+          <div class="margin"><strong id="margin-ms">0.407 ms</strong><span>变化腿长工况的周期余量</span></div><p class="caption">STM32H723 · 480 MHz · DWT 计时 · 2026-11-07</p>
+        </article>
+        <article class="evidence-card">
+          <div class="card-meta"><span>主机仿真对照</span><span>全部单位 ms</span></div>
+          <h3>四个方案，同一计时范围</h3>
+          <p id="timing-budget"></p>
+          <p>模型查询与离散化 → LESO → DARE / 凝聚与梯度 → 约束构造 → 原生求解 → 最终输入投影。</p>
+          <div class="table-wrap"><table>
+            <caption class="sr-only">相同主机完整仿真控制流程耗时，单位毫秒</caption>
+            <thead><tr><th scope="col">方案</th><th scope="col">中位</th><th scope="col">P95</th><th scope="col">有效拍</th></tr></thead>
+            <tbody id="solver-rows">
+              <tr><th scope="row">FGM · 联合功率</th><td>—</td><td>—</td><td>—</td></tr>
+              <tr><th scope="row">FGM · 预算盒</th><td>—</td><td>—</td><td>—</td></tr>
+              <tr><th scope="row">OSQP · 预算盒</th><td>—</td><td>—</td><td>—</td></tr>
+              <tr><th scope="row">OSQP · 8 段功率</th><td>—</td><td>—</td><td>—</td></tr>
+            </tbody>
+          </table></div>
+          <p class="caption">Python 仿真流程 · 双精度 C/C++ 求解内核 · 预热 20 拍</p>
+        </article>
+
+
+      </div>
+    </section>
+  </main>
+  <footer><div class="wrap foot"><div><strong>WMJ 轮腿机器人控制</strong><span>作者 · 芮浩然</span></div><a href="#main">回到顶部 ↑</a></div></footer>
+</body>
+</html>
